@@ -177,72 +177,80 @@ def build_cubic_spline(points):
     points: list of points, [[x0, y0], ..., [xN-1, yN-1]]
 
     output
-    f: list of f_k(s), [[a0,b0,c0,d0], ..., [aN,bN,cN,dN]]
-    g: list of g_k(s), [[a0,b0,c0,d0], ..., [aN,bN,cN,dN]]
+    f: list of f_k(s), [[a0,b0,c0,d0], ..., [aN-2,bN-2,cN-2,dN-2]]
+    g: list of g_k(s), [[a0,b0,c0,d0], ..., [aN-2,bN-2,cN-2,dN-2]]
     """
     N = len(points)
-    L = [get_length(points[i], points[(i+1)%N]) for i in range(N)]
-    Af = np.zeros((4*N, 4*N))
-    Ag = np.zeros((4*N, 4*N))
-    bf = np.zeros((4*N, 1))
-    bg = np.zeros((4*N, 1))
+    L = [get_length(points[i], points[i+1]) for i in range(N-1)]
+    Af = np.zeros((4*(N-1), 4*(N-1)))
+    Ag = np.zeros((4*(N-1), 4*(N-1)))
+    bf = np.zeros((4*(N-1), 1))
+    bg = np.zeros((4*(N-1), 1))
 
-    for k in range(N):
+    for k in range(N-1):
         # fk(0) = xk
-        Af[k][3*N+k] = 1
+        Af[k][3*(N-1)+k] = 1
         bf[k] = points[k][0]
 
         l = L[k]
         # fk(Lk) = xk+1
-        Af[N+k][k] = l*l*l
-        Af[N+k][N+k] = l*l
-        Af[N+k][2*N+k] = l
-        Af[N+k][3*N+k] = 1
-        bf[N+k] = points[(k+1)%N][0]
+        Af[(N-1)+k][k] = l*l*l
+        Af[(N-1)+k][N+k] = l*l
+        Af[(N-1)+k][2*(N-1)+k] = l
+        Af[(N-1)+k][3*(N-1)+k] = 1
+        bf[(N-1)+k] = points[k+1][0]
 
         # fk'(Lk) = fk+1'(0)
-        Af[2*N+k][k] = 3*l*l
-        Af[2*N+k][N+k] = 2*l
-        Af[2*N+k][2*N+k] = 1
-        Af[2*N+k][2*N+(k+1)%N] = -1
-        bf[2*N+k] = 0
+        # IF k = N-2 -> fk'(Lk) = 0
+        Af[2*(N-1)+k][k] = 3*l*l
+        Af[2*(N-1)+k][(N-1)+k] = 2*l
+        Af[2*(N-1)+k][2*(N-1)+k] = 1
+        if k < N-1:
+            Af[2*(N-1)+k][2*(N-1)+k+1] = -1
+        bf[2*(N-1)+k] = 0
 
         # fk''(Lk) = fk+1''(0)
-        Af[3*N+k][k] = 6*l
-        Af[3*N+k][N+k] = 2
-        Af[3*N+k][N+(k+1)%N] = -2
-        bf[3*N+k] = 0
+        # IF k = N-2 -> fk''(Lk) = 0
+        Af[3*(N-1)+k][k] = 6*l
+        Af[3*(N-1)+k][(N-1)+k] = 2
+        if k < N-1:
+            Af[3*(N-1)+k][(N-1)+k+1] = -2
+        bf[3*(N-1)+k] = 0
 
     for k in range(N):
         # fk(0) = xk
-        Ag[k][3*N+k] = 1
+        Ag[k][3*(N-1)+k] = 1
         bg[k] = points[k][1]
 
         l = L[k]
         # gk(Lk) = xk+1
-        Ag[N+k][k] = l*l*l
-        Ag[N+k][N+k] = l*l
-        Ag[N+k][2*N+k] = l
-        Ag[N+k][3*N+k] = 1
-        bg[N+k] = points[(k+1)%N][1]
+        Ag[(N-1)+k][k] = l*l*l
+        Ag[(N-1)+k][(N-1)+k] = l*l
+        Ag[(N-1)+k][2*(N-1)+k] = l
+        Ag[(N-1)+k][3*(N-1)+k] = 1
+        bg[(N-1)+k] = points[k+1][1]
 
         # gk'(Lk) = gk+1'(0)
-        Ag[2*N+k][k] = 3*l*l
-        Ag[2*N+k][N+k] = 2*l
-        Ag[2*N+k][2*N+k] = 1
-        Ag[2*N+k][2*N+(k+1)%N] = -1
-        bg[2*N+k] = 0
+        # IF k = N-2 -> gk'(Lk) = 0
+        Ag[2*(N-1)+k][k] = 3*l*l
+        Ag[2*(N-1)+k][(N-1)+k] = 2*l
+        Ag[2*(N-1)+k][2*(N-1)+k] = 1
+        if k < N-1:
+            Ag[2*(N-1)+k][2*(N-1)+k+1] = -1
+        bg[2*(N-1)+k] = 0
 
         # gk''(Lk) = gk+1''(0)
-        Ag[3*N+k][k] = 6*l
-        Ag[3*N+k][N+k] = 2
-        Ag[3*N+k][N+(k+1)%N] = -2
-        bg[3*N+k] = 0
+        # IF k = N-2 -> gk''(Lk) = 0
+        Ag[3*(N-1)+k][k] = 6*l
+        Ag[3*(N-1)+k][(N-1)+k] = 2
+        if k < N-1:
+            Ag[3*(N-1)+k][(N-1)+k+1] = -2
+        bg[3*(N-1)+k] = 0
 
     f = np.linalg.inv(Af)@bf
     g = np.linalg.inv(Ag)@bg
-    f = np.transpose(np.reshape(f, (4,N)))
-    g = np.transpose(np.reshape(g, (4,N)))
+    f = np.transpose(np.reshape(f, (4,N-1)))
+    g = np.transpose(np.reshape(g, (4,N-1)))
 
     return f,g
 
