@@ -1,5 +1,7 @@
 import os
 import json
+import numpy as np
+import math
 
 Cv = 0.1
 
@@ -16,6 +18,10 @@ def make_dir(dir):
 def count_files(dir):
     return len(os.listdir(dir))
 
+
+
+def get_length(A, B):
+    return ((A[0] - B[0]) ** 2 + (A[1] - B[1]) ** 2) ** 0.5
 
 def cubic_function(coeff, x):
     return coeff['c0'] + coeff['c1'] * x + coeff['c2'] * x * x + coeff['c3'] * x * x * x
@@ -161,4 +167,82 @@ def get_act(data):
         rt.append({'s': s, 'l': l})
     return rt
 
+
+def build_cubic_spline(points):
+    """
+    build cubic spline from waypoints.
+    It returns (f_k(s), g_k(s)) for 0 <= k < # of waypoints.
+
+    input
+    points: list of points, [[x0, y0], ..., [xN-1, yN-1]]
+
+    output
+    f: list of f_k(s), [[a0,b0,c0,d0], ..., [aN,bN,cN,dN]]
+    g: list of g_k(s), [[a0,b0,c0,d0], ..., [aN,bN,cN,dN]]
+    """
+    N = len(points)
+    L = [get_length(points[i], points[(i+1)%N]) for i in range(N)]
+    Af = np.zeros((4*N, 4*N))
+    Ag = np.zeros((4*N, 4*N))
+    bf = np.zeros((4*N, 1))
+    bg = np.zeros((4*N, 1))
+
+    for k in range(N):
+        # fk(0) = xk
+        Af[k][3*N+k] = 1
+        bf[k] = points[k][0]
+
+        l = L[k]
+        # fk(Lk) = xk+1
+        Af[N+k][k] = l*l*l
+        Af[N+k][N+k] = l*l
+        Af[N+k][2*N+k] = l
+        Af[N+k][3*N+k] = 1
+        bf[N+k] = points[(k+1)%N][0]
+
+        # fk'(Lk) = fk+1'(0)
+        Af[2*N+k][k] = 3*l*l
+        Af[2*N+k][N+k] = 2*l
+        Af[2*N+k][2*N+k] = 1
+        Af[2*N+k][2*N+(k+1)%N] = -1
+        bf[2*N+k] = 0
+
+        # fk''(Lk) = fk+1''(0)
+        Af[3*N+k][k] = 6*l
+        Af[3*N+k][N+k] = 2
+        Af[3*N+k][N+(k+1)%N] = -2
+        bf[3*N+k] = 0
+
+    for k in range(N):
+        # fk(0) = xk
+        Ag[k][3*N+k] = 1
+        bg[k] = points[k][1]
+
+        l = L[k]
+        # gk(Lk) = xk+1
+        Ag[N+k][k] = l*l*l
+        Ag[N+k][N+k] = l*l
+        Ag[N+k][2*N+k] = l
+        Ag[N+k][3*N+k] = 1
+        bg[N+k] = points[(k+1)%N][1]
+
+        # gk'(Lk) = gk+1'(0)
+        Ag[2*N+k][k] = 3*l*l
+        Ag[2*N+k][N+k] = 2*l
+        Ag[2*N+k][2*N+k] = 1
+        Ag[2*N+k][2*N+(k+1)%N] = -1
+        bg[2*N+k] = 0
+
+        # gk''(Lk) = gk+1''(0)
+        Ag[3*N+k][k] = 6*l
+        Ag[3*N+k][N+k] = 2
+        Ag[3*N+k][N+(k+1)%N] = -2
+        bg[3*N+k] = 0
+
+    f = np.linalg.inv(Af)@bf
+    g = np.linalg.inv(Ag)@bg
+    f = np.transpose(np.reshape(f, (4,N)))
+    g = np.transpose(np.reshape(g, (4,N)))
+
+    return f,g
 
