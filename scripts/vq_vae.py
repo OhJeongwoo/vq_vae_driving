@@ -33,14 +33,14 @@ DATASET_PATH = PROJECT_PATH + "/dataset/"
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='data processor for R3D dataset')
 
-    parser.add_argument('--exp_name', default='cifar', help='experiment name')
+    parser.add_argument('--exp_name', default='Carla', help='experiment name')
     parser.add_argument('--data_name', default='Carla', help='dataset name')
     parser.add_argument('--policy_file', default='best', help='policy file name')
-    parser.add_argument('--train', default=False, help='training mode')
-    parser.add_argument('--rollout', default=1, help='rollout length of trajectory')
+    parser.add_argument('--train', default=True, help='training mode')
+    parser.add_argument('--rollout', default=10, help='rollout length of trajectory')
     parser.add_argument('--skip_frame', default=1, help='interval between images in trajectory')
     parser.add_argument('--batch_size', default=256, help='batch size')
-    parser.add_argument('--n_updates', default=15000, help='the number of updates in training')
+    parser.add_argument('--n_updates', default=30000, help='the number of updates in training')
     parser.add_argument('--n_hiddens', default=128, help='the number of hidden layers')
     parser.add_argument('--n_residual_hiddens', default=32, help='the number of residual hidden layers')
     parser.add_argument('--n_residual_layers', default=2, help='the number of residual hidden layers')
@@ -66,14 +66,15 @@ if __name__ == '__main__':
     transform = transforms.Compose([transforms.ToTensor(),
                                     transforms.Normalize((0.5,0.5,0.5), (1.0,1.0,1.0))])
 
-    train_data = datasets.CIFAR10(root="data", train=True, download=True, transform=transform)
-    valid_data = datasets.CIFAR10(root="data", train=False, download=True, transform=transform)
+    # train_data = datasets.CIFAR10(root="data", train=True, download=True, transform=transform)
+    # valid_data = datasets.CIFAR10(root="data", train=False, download=True, transform=transform)
 
-    # train_data = CarlaDataset(DATA_PATH, 'train', transform, args)
-    # valid_data = CarlaDataset(DATA_PATH, 'valid', transform, args)
-    # test_data = CarlaDataset(DATA_PATH, 'test', transform, args)
+    train_data = CarlaDataset(DATA_PATH, 'train', transform, args)
+    valid_data = CarlaDataset(DATA_PATH, 'valid', transform, args)
+    test_data = CarlaDataset(DATA_PATH, 'test', transform, args)
 
-    data_variance = np.var(train_data.data / 255.0)
+    # data_variance = np.var(train_data.data / 255.0)
+    data_variance = 1.0
 
     train_loader = DataLoader(train_data, 
                               batch_size=args.batch_size, 
@@ -83,6 +84,11 @@ if __name__ == '__main__':
                               batch_size=32,
                               shuffle=True,
                               pin_memory=True)
+    test_loader = DataLoader(test_data,
+                              batch_size=16,
+                              shuffle=True,
+                              pin_memory=True)
+
 
 
     if args.train:
@@ -143,38 +149,19 @@ if __name__ == '__main__':
         plt.show()
 
 
+    if not args.train:
+        (test_originals, _) = next(iter(test_loader))
+        test_originals = test_originals.to(device)
+
+        vq_output_eval = model._pre_vq_conv(model._encoder(test_originals))
+        _, test_quantize, _, _, idx = model._vq_vae(vq_output_eval)
+
+        test_reconstructions = model._decoder(test_quantize)
+        test_shape = test_originals.shape
+
+        test_originals = torch.reshape(test_originals, (test_shape[0] * test_shape[1] // 3, 3, test_shape[2], test_shape[3]))
+        test_reconstructions = torch.reshape(test_originals, (test_shape[0] * test_shape[1] // 3, 3, test_shape[2], test_shape[3]))
+        show(make_grid(test_originals.cpu()+0.5))
+        show(make_grid(test_reconstructions.cpu()+0.5))
+        
     model.eval()
-
-    (valid_originals, _) = next(iter(valid_loader))
-    valid_originals = valid_originals.to(device)
-
-    vq_output_eval = model._pre_vq_conv(model._encoder(valid_originals))
-    _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
-    valid_reconstructions = model._decoder(valid_quantize)
-
-
-    (train_originals, _) = next(iter(train_loader))
-    train_originals = train_originals.to(device)
-    _, train_reconstructions, _, _ = model._vq_vae(train_originals)
-
-
-    def show(img):
-        npimg = img.numpy()
-        fig = plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')
-        fig.axes.get_xaxis().set_visible(False)
-        fig.axes.get_yaxis().set_visible(False)
-        plt.show()
-
-
-    show(make_grid(valid_reconstructions.cpu().data)+0.5, )
-
-
-    show(make_grid(valid_originals.cpu()+0.5))
-
-
-    proj = umap.UMAP(n_neighbors=3,
-                    min_dist=0.1,
-                    metric='cosine').fit_transform(model._vq_vae._embedding.weight.data.cpu())
-
-    plt.scatter(proj[:,0], proj[:,1], alpha=0.3)
-    plt.show()

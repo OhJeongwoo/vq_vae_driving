@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms 
 from PIL import Image
+import pickle
 
 from utils import *
 
@@ -30,6 +31,15 @@ class CarlaDataset(Dataset):
             print("Invalid mode %s" %(self.mode))
             return
         
+        self.label_file = self.path + 'label.pkl'
+        self.label_exists = True
+        if os.path.exists(self.label_file):
+            with open(self.label_file, 'rb') as pf:
+                self.label = pickle.load(pf)
+        else:
+            self.label = {'rollout': self.rollout, 'skip_frame': self.skip_frame}
+            self.label_exists = False
+
         dir_list = os.listdir(self.path)
         self.n_traj = 0
         for name in dir_list:
@@ -38,19 +48,27 @@ class CarlaDataset(Dataset):
 
         self.data_list = []
         for i_traj in range(self.n_traj):
-            dir_name = self.path + 'traj_' + str(i_traj).zfill(4) + '/'
+            name = 'traj_' + str(i_traj).zfill(6)
+            dir_name = self.path + name + '/'
             n_frames = count_files(dir_name)
+            if not self.label_exists:
+                    self.label[name] = {}
             for seq in range(n_frames - (self.rollout - 1) * self.skip_frame):
                 self.data_list.append({'traj': i_traj, 'seq': seq})
+                if not self.label_exists:
+                    self.label[name]['seq_' + str(seq).zfill(6)] = {'traj': i_traj, 'seq': seq}
 
 
     def __len__(self):
         return len(self.data_list)
     
+
     def __getitem__(self, idx):
         i_traj = self.data_list[idx]['traj']
         seq = self.data_list[idx]['seq']
-        img_path = self.path + 'traj_' + str(i_traj).zfill(4) + '/'
+        traj_name = 'traj_' + str(i_traj).zfill(6)
+        seq_name = 'seq_' + str(seq).zfill(6)
+        img_path = self.path + traj_name + '/'
         imgs = []
         for k in range(self.rollout):
             img_file = img_path + str(seq + k * self.skip_frame).zfill(6) + '.png'
@@ -58,7 +76,7 @@ class CarlaDataset(Dataset):
             if self.transform is not None:
                 imgs.append(self.transform(img))
         
-        return torch.cat(imgs, dim=0), None
+        return torch.cat(imgs, dim=0), self.label[traj_name][seq_name]
 
     def get_variance(self):
         # calculate variance of dataset

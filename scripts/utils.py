@@ -2,6 +2,7 @@ import os
 import json
 import numpy as np
 import math
+import matplotlib.pyplot as plt
 
 Cv = 0.1
 
@@ -254,3 +255,20 @@ def build_cubic_spline(points):
 
     return f,g
 
+def show(img):
+        npimg = img.numpy()
+        fig = plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')
+        fig.axes.get_xaxis().set_visible(False)
+        fig.axes.get_yaxis().set_visible(False)
+        plt.show()
+
+
+def split_img(img_tensor):
+    npimg = img_tensor.numpy()
+    if npimg.shape[0] % 3 != 0:
+        print("error")
+    N = npimg.shape[0] / 3
+    rt = []
+    for i in range(N):
+        rt.append(npimg[3*i:3*(i+1)])
+    return rt

@@ -113,7 +113,7 @@ class VectorQuantizerEMA(nn.Module):
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
         
         # convert quantized from BHWC -> BCHW
-        return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings
+        return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings, encoding_indices.view(input_shape[0:3])
 
 
 class Residual(nn.Module):
@@ -180,7 +180,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
+    def __init__(self, out_channels, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
         super(Decoder, self).__init__()
         
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
@@ -199,11 +199,12 @@ class Decoder(nn.Module):
                                                 stride=2, padding=1)
         
         self._conv_trans_2 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
-                                                out_channels=3,
+                                                out_channels=out_channels,
                                                 kernel_size=4, 
                                                 stride=2, padding=1)
 
     def forward(self, inputs):
+        print(inputs.shape)
         x = self._conv_1(inputs)
         
         x = self._residual_stack(x)
@@ -240,7 +241,8 @@ class Model(nn.Module):
         else:
             self._vq_vae = VectorQuantizer(num_embeddings, embedding_dim,
                                         commitment_cost)
-        self._decoder = Decoder(embedding_dim,
+        self._decoder = Decoder(3*rollout,
+                                embedding_dim,
                                 num_hiddens, 
                                 num_residual_layers, 
                                 num_residual_hiddens)
@@ -248,7 +250,7 @@ class Model(nn.Module):
     def forward(self, x):
         z = self._encoder(x)
         z = self._pre_vq_conv(z)
-        loss, quantized, perplexity, _ = self._vq_vae(z)
+        loss, quantized, perplexity, _, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
 
         return loss, x_recon, perplexity
