@@ -16,8 +16,17 @@ def make_dir(dir):
         os.mkdir(dir)
 
 
-def count_files(dir):
-    return len(os.listdir(dir))
+def count_files(dir, cond=None):
+    files = os.listdir(dir)
+    if cond is None:
+        return len(files)
+    else:
+        rt = 0
+        c = len(cond)
+        for file in files:
+            if file[-c:] == cond:
+                rt += 1
+        return rt
 
 
 

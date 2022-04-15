@@ -50,7 +50,7 @@ if __name__ == '__main__':
     EXP_PATH = POLICY_PATH + args.exp_name + "/"
     DATA_PATH = DATASET_PATH + args.data_name + "/"
     POLICY_FILE = EXP_PATH + args.policy_file + ".pt"
-    SAVE_FILE = DATA_PATH + args.data_type + '/label.pkl'
+    SAVE_PATH = DATA_PATH + args.data_type + "/"
 
     make_dir(EXP_PATH)
 
@@ -82,10 +82,9 @@ if __name__ == '__main__':
         vq_output_eval = model._pre_vq_conv(model._encoder(data_originals))
         _, _, _, _, embbeding_idx = model._vq_vae(vq_output_eval)
         embbeding_idx = np.squeeze(embbeding_idx.cpu().numpy(), axis=0)
-        dataset.label[traj_name][seq_name]['label'] = embbeding_idx
+        with open(SAVE_PATH + traj_name + "/" + seq_name + ".pkl", 'wb') as f:
+            pickle.dump(embbeding_idx, f)
     
-    with open(SAVE_FILE, 'wb') as f:
-        pickle.dump(dataset.label, f)
 
 
 

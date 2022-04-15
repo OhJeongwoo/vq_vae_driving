@@ -50,7 +50,7 @@ class CarlaDataset(Dataset):
         for i_traj in range(self.n_traj):
             name = 'traj_' + str(i_traj).zfill(6)
             dir_name = self.path + name + '/'
-            n_frames = count_files(dir_name)
+            n_frames = count_files(dir_name, cond='png')
             if not self.label_exists:
                     self.label[name] = {}
             for seq in range(n_frames - (self.rollout - 1) * self.skip_frame):
@@ -82,11 +82,63 @@ class CarlaDataset(Dataset):
         # calculate variance of dataset
         # output C*H*W
         return 1.0
+
+
+class CodeDataset(Dataset):
+    def __init__(self, path, mode, transform=None, args=None):
+        # set hyperparamter
+        self.path = path
+        self.mode = mode
+        self.transform = transform
+        
+        if self.mode == 'train':
+            self.path += '/train/'
+        elif self.mode == 'valid':
+            self.path += '/valid/'
+        elif self.mode == 'test':
+            self.path += '/test/'
+        else:
+            print("Invalid mode %s" %(self.mode))
+            return
+
+        dir_list = os.listdir(self.path)
+        self.n_traj = 0
+        for name in dir_list:
+            if name[0:4] == 'traj':
+                self.n_traj += 1
+
+        self.data_list = []
+        for i_traj in range(self.n_traj):
+            name = 'traj_' + str(i_traj).zfill(6)
+            dir_name = self.path + name + '/'
+            n_frames = count_files(dir_name, cond='pkl')
+            for seq in range(n_frames):
+                self.data_list.append({'traj': i_traj, 'seq': seq})
+
+
+    def __len__(self):
+        return len(self.data_list)
+    
+
+    def __getitem__(self, idx):
+        i_traj = self.data_list[idx]['traj']
+        seq = self.data_list[idx]['seq']
+        traj_name = 'traj_' + str(i_traj).zfill(6)
+        seq_name = 'seq_' + str(seq).zfill(6)
+        code_file = self.path + traj_name + '/' + seq_name + '.pkl'
+        with open(code_file, 'rb') as pf:
+            code = pickle.load(pf)
+        
+        return torch.from_numpy(code), 1.0
+
+    def get_variance(self):
+        # calculate variance of dataset
+        # output C*H*W
+        return 1.0
     
 
 if __name__=="__main__":
-    
-    
+    """
     transform = transforms.Compose([transforms.ToTensor(),
                                     transforms.Normalize((0.5,0.5,0.5), (1.0,1.0,1.0))])
     
@@ -100,3 +152,14 @@ if __name__=="__main__":
         print("***")
         for batch in dataloader:
             print(batch.shape)
+    """
+    PROJECT_PATH = os.path.abspath("..")
+    DATA_PATH = PROJECT_PATH + "/dataset/Carla/"
+    dataset = CodeDataset(DATA_PATH, 'train')
+    data_loader = DataLoader(dataset, 
+                             batch_size=16, 
+                             shuffle=False,
+                             drop_last=False,
+                             pin_memory=True)
+    for batch in data_loader:
+        print(batch[0].shape)
