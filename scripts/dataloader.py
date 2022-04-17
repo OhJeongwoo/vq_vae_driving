@@ -128,8 +128,8 @@ class CodeDataset(Dataset):
         code_file = self.path + traj_name + '/' + seq_name + '.pkl'
         with open(code_file, 'rb') as pf:
             code = pickle.load(pf)
-        
-        return torch.from_numpy(code), 1.0
+
+        return torch.unsqueeze(torch.from_numpy(code),dim=0), 1.0
 
     def get_variance(self):
         # calculate variance of dataset
