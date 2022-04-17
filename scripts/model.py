@@ -47,6 +47,19 @@ class VectorQuantizer(nn.Module):
         # convert quantized from BHWC -> BCHW
         return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings
 
+    def load_codebook(self, inputs):
+        input_shape = inputs.shape # B x H x W
+        print(input_shape)
+
+        flat_input = inputs.view(-1, 1)
+        encoding_indices = torch.squeeze(flat_input, dim=1)
+        encodings = torch.zeros(encoding_indices.shape[0], self._num_embeddings, device=inputs.device)
+        encodings.scatter_(1, int(encoding_indices), 1)
+        
+        # Quantize and unflatten
+        quantized = torch.matmul(encodings, self._embedding.weight).view((input_shape[0], input_shape[1], input_shape[2], self._embedding_dim))
+        return quantized.permute(0,3,1,2).contiguous()
+
 
 class VectorQuantizerEMA(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, commitment_cost, decay, epsilon=1e-5):
