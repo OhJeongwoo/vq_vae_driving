@@ -7,6 +7,7 @@ from scipy.signal import savgol_filter
 import os
 import argparse
 import pickle
+import time
 
 
 from six.moves import xrange
@@ -25,21 +26,23 @@ from torchvision.utils import make_grid
 
 from utils import *
 from model import *
-from dataloader import CarlaDataset
+from dataloader import *
 
 PROJECT_PATH = os.path.abspath("..")
 POLICY_PATH = PROJECT_PATH + "/policy/"
 DATASET_PATH = PROJECT_PATH + "/dataset/"
 
 if __name__ == '__main__':
+    init_time = time.time() 
+
     parser = argparse.ArgumentParser(description='data processor for R3D dataset')
 
-    parser.add_argument('--exp_name', default='Carla', help='experiment name')
-    parser.add_argument('--data_name', default='Carla', help='dataset name')
-    parser.add_argument('--data_type', default='train', help='name of the dataset what we label')
+    parser.add_argument('--exp_name', default='NGSIM_220526_2', help='experiment name')
+    parser.add_argument('--data_name', default='NGSIM', help='dataset name')
+    parser.add_argument('--data_type', default='test', help='name of the dataset what we label')
     parser.add_argument('--policy_file', default='best', help='policy file name')
-    parser.add_argument('--rollout', default=10, help='rollout length of trajectory')
-    parser.add_argument('--skip_frame', default=1, help='interval between images in trajectory')
+    parser.add_argument('--rollout', default=20, help='rollout length of trajectory')
+    parser.add_argument('--skip_frame', default=3, help='interval between images in trajectory')
 
     args = parser.parse_args()
 
@@ -58,9 +61,9 @@ if __name__ == '__main__':
     transform = transforms.Compose([transforms.ToTensor(),
                                     transforms.Normalize((0.5,0.5,0.5), (1.0,1.0,1.0))])
 
-    dataset = CarlaDataset(DATA_PATH, args.data_type, transform, args)
-
-    # data_variance = np.var(train_data.data / 255.0)
+    # dataset = CarlaDataset(DATA_PATH, args.data_type, transform, args)
+    dataset = NGSIMDataset(DATA_PATH, args.data_type, transform=transform, args=args)
+    
     data_variance = 1.0
 
     data_loader = DataLoader(dataset, 
@@ -71,20 +74,43 @@ if __name__ == '__main__':
 
     model = torch.load(POLICY_FILE)
 
+    N = len(dataset)
+    n_data = 0
     for batch in data_loader:
         input = batch[0]
         i_traj = batch[1]['traj'].cpu().item()
         seq = batch[1]['seq'].cpu().item()
-        print("traj #: %d, seq #: %d" %(i_traj, seq))
+        # print("traj #: %d, seq #: %d" %(i_traj, seq))
         traj_name = 'traj_' + str(i_traj).zfill(6)
-        seq_name = 'seq_' + str(seq).zfill(6)
-        data_originals = input.to(device)
-        vq_output_eval = model._pre_vq_conv(model._encoder(data_originals))
-        _, _, _, _, embbeding_idx = model._vq_vae(vq_output_eval)
-        embbeding_idx = np.squeeze(embbeding_idx.cpu().numpy(), axis=0)
-        with open(SAVE_PATH + traj_name + "/" + seq_name + ".pkl", 'wb') as f:
-            pickle.dump(embbeding_idx, f)
-    
+        seq_name = str(seq).zfill(6)
+        file_name = SAVE_PATH + traj_name + "/" + seq_name + ".pkl"
+        '''
+        original version
+        '''
+        # data_originals = input.to(device)
+        # vq_output_eval = model._pre_vq_conv(model._encoder(data_originals))
+        # _, _, _, _, embbeding_idx = model._vq_vae(vq_output_eval)
+        # embbeding_idx = np.squeeze(embbeding_idx.cpu().numpy(), axis=0)
+        
+        '''
+        hojun version
+        '''
+        bev_test = input.permute(0,2,1,3,4)
+        bev_test = bev_test.to(device)
+        encoded_bev = model.bev_encoder(bev_test)
+        z_bev = model._pre_vq_conv_bev(encoded_bev)
+        loss_bev, code_bev, _, _, embbeding_idx = model._vq_vae_bev(z_bev)
+        # you need to extract embbeding index from quantizer code!
+        
+        with open(file_name, 'rb') as f:
+            label = pickle.load(f)
+        label['code'] = embbeding_idx
+        with open(file_name, 'wb') as f:
+            pickle.dump(label, f)
+        f.close()
+        n_data += 1
+        if n_data % 1000 == 0:
+            print("[%.3f] %d/%d, expected remaining time: %.3f" %(time.time() - init_time, n_data, N, (time.time() - init_time) / n_data * (N - n_data)))
 
 
 

@@ -28,7 +28,8 @@ def count_files(dir, cond=None):
                 rt += 1
         return rt
 
-
+def discretize(sample):
+    return (sample * 511).to(torch.long)
 
 def get_length(A, B):
     return ((A[0] - B[0]) ** 2 + (A[1] - B[1]) ** 2) ** 0.5
@@ -264,6 +265,13 @@ def build_cubic_spline(points):
 
     return f,g
 
+def save_result(img, path):
+        npimg = img.numpy()
+        fig = plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')
+        fig.axes.get_xaxis().set_visible(False)
+        fig.axes.get_yaxis().set_visible(False)
+        plt.savefig(path)
+    
 def show(img):
         npimg = img.numpy()
         fig = plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')

@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.optim as optim
+import pytorch_lightning as pl
 
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
@@ -33,13 +34,13 @@ DATASET_PATH = PROJECT_PATH + "/dataset/"
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='data processor for R3D dataset')
 
-    parser.add_argument('--exp_name', default='Carla', help='experiment name')
+    parser.add_argument('--exp_name', default='Carla_220417', help='experiment name')
+    #parser.add_argument('--data_name', default='Carla_high', help='dataset name')
     parser.add_argument('--data_name', default='Carla', help='dataset name')
     parser.add_argument('--policy_file', default='best', help='policy file name')
-    parser.add_argument('--train', default=True, help='training mode')
-    parser.add_argument('--rollout', default=10, help='rollout length of trajectory')
-    parser.add_argument('--skip_frame', default=1, help='interval between images in trajectory')
-    parser.add_argument('--batch_size', default=256, help='batch size')
+    parser.add_argument('--rollout', default=5, help='rollout length of trajectory')
+    parser.add_argument('--skip_frame', default=5, help='interval between images in trajectory')
+    parser.add_argument('--batch_size', default=64, help='batch size')
     parser.add_argument('--n_updates', default=30000, help='the number of updates in training')
     parser.add_argument('--n_hiddens', default=128, help='the number of hidden layers')
     parser.add_argument('--n_residual_hiddens', default=32, help='the number of residual hidden layers')
@@ -91,10 +92,11 @@ if __name__ == '__main__':
 
 
 
-    if args.train:
-        model = Model(args).to(device)
-    else:
-        model = torch.load(POLICY_FILE)
+    model = torch.load(POLICY_FILE)
+    # generator = PixelCNN.load_from_checkpoint(PROJECT_PATH + "/saved_models/tutorial12_dupl/PixelCNN.ckpt")
+    # generator = torch.load(PROJECT_PATH+"/saved_models/Carla_high/model_00990.pt")
+    generator = torch.load(PROJECT_PATH+"/saved_models/220417/model_00490.pt")
+    # generator = torch.load(PROJECT_PATH + "/saved_models/tutorial12_dupl/PixelCNN.ckpt")
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, amsgrad=False)
 
 
@@ -106,12 +108,21 @@ if __name__ == '__main__':
 
     # generate index
 
-
-    test_quantize = model._vq_vae.load_codebook(idx)
+    pl.seed_everything(2)
+    # samples = generator.sample(img_shape=(8,1,33,60))
+    # samples = generator.sample(img_shape = (10, 1, 17, 30))
+    # print(samples[1])
+    # print(samples.shape)
+    # print(samples)
+    # samples = int(samples)
+    # print(samples)
+    test_quantize = model._vq_vae.load_codebook(samples)
 
     test_reconstructions = model._decoder(test_quantize)
-    
-    test_reconstructions = torch.reshape(test_originals, (test_shape[0] * test_shape[1] // 3, 3, test_shape[2], test_shape[3]))
+    test_shape = test_reconstructions.shape
+    test_reconstructions = torch.reshape(test_reconstructions, (test_shape[0] * test_shape[1] // 3, 3, test_shape[2], test_shape[3]))
+    print(test_reconstructions.shape)
+    print(test_reconstructions[0:10])
     show(make_grid(test_reconstructions.cpu()+0.5))
         
     model.eval()

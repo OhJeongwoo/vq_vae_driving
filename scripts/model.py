@@ -66,7 +66,6 @@ class VectorQuantizer(nn.Module):
 
     def load_codebook(self, inputs):
         input_shape = inputs.shape # B x H x W
-        print(input_shape)
 
         flat_input = inputs.view(-1, 1)
         encoding_indices = torch.squeeze(flat_input, dim=1)
@@ -145,6 +144,16 @@ class VectorQuantizerEMA(nn.Module):
         # convert quantized from BHWC -> BCHW
         return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings, encoding_indices.view(input_shape[0:3])
 
+    def load_codebook(self, inputs):
+        input_shape = inputs.shape # B x H x W
+
+        flat_input = inputs.view(-1, 1)
+        encoding_indices = torch.squeeze(flat_input, dim=1)
+        encodings = torch.zeros(encoding_indices.shape[0], self._num_embeddings, device=inputs.device)
+        encodings.scatter_(1, torch.unsqueeze(encoding_indices, dim=1), 1)
+        # Quantize and unflatten
+        quantized = torch.matmul(encodings, self._embedding.weight).view((input_shape[0], input_shape[2], input_shape[3], self._embedding_dim))
+        return quantized.permute(0,3,1,2).contiguous()
 
 class Residual(nn.Module):
     def __init__(self, in_channels, num_hiddens, num_residual_hiddens):
@@ -437,7 +446,7 @@ class PixelCNN(pl.LightningModule):
         # Create empty image
         if img is None:
             img = torch.zeros(img_shape, dtype=torch.long).to(device) - 1
-            
+
         # Generation loop
         for h in tqdm(range(img_shape[2]), leave=False):
             for w in range(img_shape[3]):
