@@ -6,8 +6,9 @@
 ```
 git clone https://github.com/OhJeongwoo/vq_vae_driving.git
 cd vq_vae_driving
+mkdir dataset && cd dataset
 git clone https://github.com/rllab-snu/R3-Driving-Dataset.git
-cd scripts
+cd ../scripts
 python processing_R3D.py
 ```
 

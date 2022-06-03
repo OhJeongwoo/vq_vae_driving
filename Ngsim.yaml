@@ -1,0 +1,16 @@
+exp_name: 'Ngsim_220518'
+data_name: 'Ngsim'
+policy_file: 'best'
+train: True
+rollout: 1
+skip_frame: 5
+batch_size: 64
+n_updates: 50000
+n_hiddens: 128
+n_residual_hiddens: 32
+n_residual_layers: 2
+embedding_dim: 64
+n_embedding: 512
+commitment_cost: 0.25
+decay: 0.99
+learning_rate: 0.001
