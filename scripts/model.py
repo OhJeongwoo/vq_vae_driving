@@ -1,24 +1,31 @@
+from locale import normalize
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
 import torch.optim as optim
+from torch.distributions.normal import Normal
 # Torchvision
 import torchvision
 from torchvision.datasets import MNIST
 from torchvision import transforms
-# PyTorch Lightning
-try:
-    import pytorch_lightning as pl
-except ModuleNotFoundError: # Google Colab does not have PyTorch Lightning installed by default. Hence, we do it here if necessary
+# # PyTorch Lightning
+# try:
+#     import pytorch_lightning as pl
+# except ModuleNotFoundError: # Google Colab does not have PyTorch Lightning installed by default. Hence, we do it here if necessary
 
-    import pytorch_lightning as pl
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+#     import pytorch_lightning as pl
+# from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 
+import math
 import numpy as np
 from tqdm.notebook import tqdm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ONEOVERSQRT2PI = 1.0 / math.sqrt(2*math.pi)
+EPS = 1e-6
+LOG_STD_MIN = -20
+LOG_STD_MAX = 2
 
 class VectorQuantizer(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, commitment_cost):
@@ -479,3 +486,145 @@ class PixelCNN(pl.LightningModule):
         loss = self.calc_likelihood(batch[0])
         self.log('test_bpd', loss)
     
+
+class MLP(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_layers, learning_rate):
+        super(MLP, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_layers = hidden_layers
+        self.H = len(self.hidden_layers)
+        self.fc = nn.ModuleList([])
+        self.fc.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
+        self.lr = learning_rate
+        for i in range(1, self.H):
+            self.fc.append(nn.Linear(self.hidden_layers[i-1], self.hidden_layers[i]))
+        self.fc.append(nn.Linear(self.hidden_layers[self.H - 1], self.output_dim))
+        self.optimizer = optim.Adam(self.parameters(), lr = self.lr)
+
+    def forward(self, x):
+        # forward network and return
+        for i in range(0,self.H):
+            x = F.relu(self.fc[i](x))
+        x = self.fc[self.H](x)
+        x = F.normalize(x,dim=1)
+        return x
+
+class GaussianActor(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden_layers, learning_rate, act_limit):
+        super(GaussianActor, self).__init__()
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.hidden_layers = hidden_layers
+        self.H = len(self.hidden_layers)
+        self.fc = nn.ModuleList([])
+        self.fc.append(nn.Linear(self.obs_dim, self.hidden_layers[0]))
+        self.lr = learning_rate
+        self.act_limit = act_limit
+        for i in range(1, self.H):
+            self.fc.append(nn.Linear(self.hidden_layers[i-1], self.hidden_layers[i]))
+        self.mu_layer = nn.Linear(self.hidden_layers[self.H - 1], self.act_dim)
+        self.log_std_layer = nn.Linear(self.hidden_layers[self.H - 1], self.act_dim)
+        self.optimizer = optim.Adam(self.parameters(), lr = self.lr)
+
+    def forward(self, obs, act=None):
+        x = obs
+        for i in range(0,self.H):
+            x = F.leaky_relu(self.fc[i](x))
+        mu = self.mu_layer(x)
+        log_std = torch.clamp(self.log_std_layer(x), LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+        if act is None:
+            pi_distribution = Normal(mu, std)
+            pi_action = pi_distribution.rsample()
+            logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
+            logp_pi -= (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
+            pi_action = torch.tanh(pi_action)
+            pi_action = self.act_limit * pi_action
+            return  pi_action, logp_pi
+        pi = Normal(mu, std)
+        return pi, pi.log_prob(act).sum(axis=-1)
+
+
+    def _distribution(self, obs):
+        x = obs
+        for i in range(0,self.H):
+            x = F.leaky_relu(self.fc[i](x))
+        mu = self.mu_layer(x)
+        log_std = torch.clamp(self.log_std_layer(x), LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+        return Normal(mu, std)
+
+    def _log_prob_from_distribution(self, pi, act):
+        return pi.log_prob(act).sum(axis=-1)    # Last axis sum needed for Torch Normal distribution
+
+
+class QFunction(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden_layers, learning_rate):
+        super(QFunction, self).__init__()
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.hidden_layers = hidden_layers
+        self.H = len(self.hidden_layers)
+        self.fc = nn.ModuleList([])
+        self.fc.append(nn.Linear(self.obs_dim + self.act_dim, self.hidden_layers[0]))
+        self.lr = learning_rate
+        for i in range(1, self.H):
+            self.fc.append(nn.Linear(self.hidden_layers[i-1], self.hidden_layers[i]))
+        self.fc.append(nn.Linear(self.hidden_layers[self.H - 1], 1))
+        self.optimizer = optim.Adam(self.parameters(), lr = self.lr)
+
+    def forward(self, obs, act):
+        x = torch.cat([obs, act], dim = -1).to(self.device)
+        for i in range(0,self.H):
+            x = F.leaky_relu(self.fc[i](x))
+        q = self.fc[self.H](x)
+        return torch.squeeze(q, -1)
+
+
+class Discriminator(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden_layers, learning_rate):
+        super(Discriminator, self).__init__()
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.hidden_layers = hidden_layers
+        self.H = len(self.hidden_layers)
+        self.fc = nn.ModuleList([])
+        self.fc.append(nn.Linear(self.obs_dim + self.act_dim, self.hidden_layers[0]))
+        self.lr = learning_rate
+        for i in range(1, self.H):
+            self.fc.append(nn.Linear(self.hidden_layers[i-1], self.hidden_layers[i]))
+        self.fc.append(nn.Linear(self.hidden_layers[self.H - 1], 1))
+        self.optimizer = optim.Adam(self.parameters(), lr = self.lr)
+
+    def forward(self, obs, act=None):
+        if act is not None:
+            x = torch.cat([obs, act], dim = -1).to(self.device)
+        else:
+            x = torch.cat([obs], dim=-1).to(self.device)
+        for i in range(0,self.H):
+            x = F.leaky_relu(self.fc[i](x))
+        q = self.fc[self.H](x)
+        q = torch.clamp(torch.sigmoid(q), 1e-6, 1-1e-6)
+        return torch.squeeze(q, -1)
+
+    def get_reward(self, obs, act):
+        with torch.no_grad():
+            return -torch.log(self.forward(obs, act)).cpu().numpy()
+
+class SACCore(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden_layers, learning_rate, act_limit):
+        super(SACCore, self).__init__()
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.hidden_layers = hidden_layers
+        self.H = len(self.hidden_layers)
+        self.lr = learning_rate
+        self.act_limit = act_limit
+        self.pi = GaussianActor(obs_dim, act_dim, hidden_layers, learning_rate, act_limit)
+        self.q1 = QFunction(obs_dim, act_dim, hidden_layers, learning_rate)
+        self.q2 = QFunction(obs_dim, act_dim, hidden_layers, learning_rate)
+        
+    def act(self, obs):
+        a, _ = self.pi(obs)
+        return a

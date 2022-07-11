@@ -37,12 +37,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='data processor for R3D dataset')
 
-    parser.add_argument('--exp_name', default='NGSIM_220526_2', help='experiment name')
+    parser.add_argument('--exp_name', default='NGSIM_220620_test', help='experiment name')
     parser.add_argument('--data_name', default='NGSIM', help='dataset name')
-    parser.add_argument('--data_type', default='test', help='name of the dataset what we label')
+    parser.add_argument('--data_type', default='valid', help='name of the dataset what we label')
     parser.add_argument('--policy_file', default='best', help='policy file name')
-    parser.add_argument('--rollout', default=20, help='rollout length of trajectory')
-    parser.add_argument('--skip_frame', default=3, help='interval between images in trajectory')
+    parser.add_argument('--rollout', default=8, help='rollout length of trajectory')
+    parser.add_argument('--skip_frame', default=10, help='interval between images in trajectory')
 
     args = parser.parse_args()
 
@@ -75,6 +75,7 @@ if __name__ == '__main__':
     model = torch.load(POLICY_FILE)
 
     N = len(dataset)
+    print(N)
     n_data = 0
     for batch in data_loader:
         input = batch[0]
@@ -99,12 +100,14 @@ if __name__ == '__main__':
         bev_test = bev_test.to(device)
         encoded_bev = model.bev_encoder(bev_test)
         z_bev = model._pre_vq_conv_bev(encoded_bev)
-        loss_bev, code_bev, _, _, embbeding_idx = model._vq_vae_bev(z_bev)
+        loss_bev, code_bev, _, embedding_idx = model._vq_vae_bev(z_bev)
+        embedding_idx = torch.squeeze(embedding_idx.permute(1,0,2,3),dim=0)
         # you need to extract embbeding index from quantizer code!
         
         with open(file_name, 'rb') as f:
             label = pickle.load(f)
-        label['code'] = embbeding_idx
+        label['code'] = embedding_idx.cpu().numpy()
+        
         with open(file_name, 'wb') as f:
             pickle.dump(label, f)
         f.close()

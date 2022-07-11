@@ -35,11 +35,11 @@ DATASET_PATH = PROJECT_PATH + "/dataset/"
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='data processor for R3D dataset')
 
-    parser.add_argument('--exp_name', default='NGSIM_debug', type=str, help='experiment name')
+    parser.add_argument('--exp_name', default='NGSIM_220620', type=str, help='experiment name')
     parser.add_argument('--data_name', default='NGSIM', type=str, help='dataset name')
     parser.add_argument('--policy_file', default='best', type=str, help='policy file name')
     parser.add_argument('--train', default=True, type=bool, help='training mode')
-    parser.add_argument('--rollout', default=180, type=int, help='rollout length of trajectory')
+    parser.add_argument('--rollout', default=20, type=int, help='rollout length of trajectory')
     parser.add_argument('--skip_frame', default=1, type=int, help='interval between images in trajectory')
     parser.add_argument('--batch_size', default=32, type=int, help='batch size')
     # parser.add_argument('--n_updates', default=5000, type=int, help='the number of updates in training')
